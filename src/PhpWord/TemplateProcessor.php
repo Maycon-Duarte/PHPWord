@@ -35,6 +35,13 @@ class TemplateProcessor
     const MAXIMUM_REPLACEMENTS_DEFAULT = -1;
 
     /**
+     * Content of document rels (in XML format) of the temporary document.
+     *
+     * @var string
+     */
+    private $temporaryDocumentRels;
+
+    /**
      * ZipArchive object.
      *
      * @var mixed
@@ -134,6 +141,7 @@ class TemplateProcessor
         $this->tempDocumentMainPart = $this->readPartWithRels($this->getMainPartName());
         $this->tempDocumentSettingsPart = $this->readPartWithRels($this->getSettingsPartName());
         $this->tempDocumentContentTypes = $this->zipClass->getFromName($this->getDocumentContentTypesName());
+        $this->temporaryDocumentRels = $this->zipClass->getFromName($this->getRelationsName($this->getMainPartName()));
     }
 
     public function __destruct()
@@ -146,6 +154,18 @@ class TemplateProcessor
                 // Nothing to do here.
             }
         }
+        // Temporary file
+        if ($this->tempDocumentFilename && file_exists($this->tempDocumentFilename)) {
+            unlink($this->tempDocumentFilename);
+        }
+    }
+
+    public function __wakeup(): void
+    {
+        $this->tempDocumentFilename = '';
+        $this->zipClass = null;
+
+        throw new Exception('unserialize not permitted for this class');
     }
 
     /**
@@ -343,15 +363,6 @@ class TemplateProcessor
         if (Settings::isOutputEscapingEnabled()) {
             $xmlEscaper = new Xml();
             $replace = $xmlEscaper->escape($replace);
-        }
-
-        // convert carriage returns
-        if (is_array($replace)) {
-            foreach ($replace as &$item) {
-                $item = $this->replaceCarriageReturns($item);
-            }
-        } else {
-            $replace = $this->replaceCarriageReturns($replace);
         }
 
         $this->tempDocumentHeaders = $this->setValueForPart($search, $replace, $this->tempDocumentHeaders, $limit);
@@ -698,7 +709,7 @@ class TemplateProcessor
                     if (preg_match('/(<[^<]+>)([^<]*)(' . preg_quote($varNameWithArgsFixed) . ')([^>]*)(<[^>]+>)/Uu', $partContent, $matches)) {
                         $wholeTag = $matches[0];
                         array_shift($matches);
-                        [$openTag, $prefix, , $postfix, $closeTag] = $matches;
+                        [$openTag, $prefix,, $postfix, $closeTag] = $matches;
                         $replaceXml = $openTag . $prefix . $closeTag . $xmlImage . $openTag . $postfix . $closeTag;
                         // replace on each iteration, because in one tag we can have 2+ inline variables => before proceed next variable we need to change $partContent
                         $partContent = $this->setValueForPart($wholeTag, $replaceXml, $partContent, $limit);
@@ -782,7 +793,8 @@ class TemplateProcessor
 
                 // If tmpXmlRow doesn't contain continue, this row is no longer part of the spanned row.
                 $tmpXmlRow = $this->getSlice($extraRowStart, $extraRowEnd);
-                if (!preg_match('#<w:vMerge/>#', $tmpXmlRow) &&
+                if (
+                    !preg_match('#<w:vMerge/>#', $tmpXmlRow) &&
                     !preg_match('#<w:vMerge w:val="continue"\s*/>#', $tmpXmlRow)
                 ) {
                     break;
@@ -844,7 +856,8 @@ class TemplateProcessor
 
                 // If tmpXmlRow doesn't contain continue, this row is no longer part of the spanned row.
                 $tmpXmlRow = $this->getSlice($extraRowStart, $extraRowEnd);
-                if (!preg_match('#<w:vMerge/>#', $tmpXmlRow) &&
+                if (
+                    !preg_match('#<w:vMerge/>#', $tmpXmlRow) &&
                     !preg_match('#<w:vMerge w:val="continue" />#', $tmpXmlRow)
                 ) {
                     break;
@@ -1303,14 +1316,6 @@ class TemplateProcessor
     }
 
     /**
-     * Replace carriage returns with xml.
-     */
-    public function replaceCarriageReturns(string $string): string
-    {
-        return str_replace(["\r\n", "\r", "\n"], '</w:t><w:br/><w:t>', $string);
-    }
-
-    /**
      * Replaces variables with values from array, array keys are the variable names.
      *
      * @param array $variableReplacements
@@ -1495,8 +1500,17 @@ class TemplateProcessor
         self::$macroClosingChars = $macroClosingChars;
     }
 
-    public function getTempDocumentFilename(): string
+    /**
+     * Replace image by name
+     *
+     * @param string $search
+     * @param mixed $replace
+     */
+    public function replaceImage($search, $replace): void
     {
-        return $this->tempDocumentFilename;
-    }
+        $fileNameStart = strpos($this->temporaryDocumentRels, $search);
+        $fileName = strstr(substr($this->temporaryDocumentRels, $fileNameStart), '"', true);
+
+        $this->zipClass->addFromString("word/media/" . $fileName, $replace);
+    } 
 }
