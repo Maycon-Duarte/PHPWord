@@ -128,21 +128,21 @@ class Html
                         break;
                     case 'width':
                         // tables, cells
+                        $val = $val === 'auto' ? '100%' : $val;
                         if (false !== strpos($val, '%')) {
                             // e.g. <table width="100%"> or <td width="50%">
                             $styles['width'] = (int) $val * 50;
                             $styles['unit'] = \PhpOffice\PhpWord\SimpleType\TblWidth::PERCENT;
                         } else {
                             // e.g. <table width="250> where "250" = 250px (always pixels)
-                            $styles['width'] = Converter::pixelToTwip($val);
+                            $styles['width'] = Converter::pixelToTwip(self::convertHtmlSize($val));
                             $styles['unit'] = \PhpOffice\PhpWord\SimpleType\TblWidth::TWIP;
                         }
 
                         break;
                     case 'cellspacing':
                         // tables e.g. <table cellspacing="2">,  where "2" = 2px (always pixels)
-                        $val = (int) $val . 'px';
-                        $styles['cellSpacing'] = Converter::cssToTwip($val);
+                        $styles['cellSpacing'] = Converter::pixelToTwip(self::convertHtmlSize($val));
 
                         break;
                     case 'bgcolor':
@@ -804,6 +804,58 @@ class Html
                     $styles['spaceAfter'] = Converter::cssToTwip($value);
 
                     break;
+
+                case 'padding':
+                    $valueTop = $valueRight = $valueBottom = $valueLeft = null;
+                    $cValue = preg_replace('# +#', ' ', trim($value));
+                    $paddingArr = explode(' ', $cValue);
+                    $countParams = count($paddingArr);
+                    if ($countParams == 1) {
+                        $valueTop = $valueRight = $valueBottom = $valueLeft = $paddingArr[0];
+                    } elseif ($countParams == 2) {
+                        $valueTop = $valueBottom = $paddingArr[0];
+                        $valueRight = $valueLeft = $paddingArr[1];
+                    } elseif ($countParams == 3) {
+                        $valueTop = $paddingArr[0];
+                        $valueRight = $valueLeft = $paddingArr[1];
+                        $valueBottom = $paddingArr[2];
+                    } elseif ($countParams == 4) {
+                        $valueTop = $paddingArr[0];
+                        $valueRight = $paddingArr[1];
+                        $valueBottom = $paddingArr[2];
+                        $valueLeft = $paddingArr[3];
+                    }
+                    if ($valueTop !== null) {
+                        $styles['paddingTop'] = Converter::cssToTwip($valueTop);
+                    }
+                    if ($valueRight !== null) {
+                        $styles['paddingRight'] = Converter::cssToTwip($valueRight);
+                    }
+                    if ($valueBottom !== null) {
+                        $styles['paddingBottom'] = Converter::cssToTwip($valueBottom);
+                    }
+                    if ($valueLeft !== null) {
+                        $styles['paddingLeft'] = Converter::cssToTwip($valueLeft);
+                    }
+
+                    break;
+                case 'padding-top':
+                    $styles['paddingTop'] = Converter::cssToTwip($value);
+
+                    break;
+                case 'padding-right':
+                    $styles['paddingRight'] = Converter::cssToTwip($value);
+
+                    break;
+                case 'padding-bottom':
+                    $styles['paddingBottom'] = Converter::cssToTwip($value);
+
+                    break;
+                case 'padding-left':
+                    $styles['paddingLeft'] = Converter::cssToTwip($value);
+
+                    break;
+
                 case 'border-color':
                     self::mapBorderColor($styles, $value);
 
@@ -902,36 +954,12 @@ class Html
 
                     break;
                 case 'width':
-                    $width = $attribute->value;
-
-                    // pt
-                    if (false !== strpos($width, 'pt')) {
-                        $width = Converter::pointToPixel((float) str_replace('pt', '', $width));
-                    }
-
-                    // px
-                    if (false !== strpos($width, 'px')) {
-                        $width = str_replace('px', '', $width);
-                    }
-
-                    $style['width'] = $width;
+                    $style['width'] = self::convertHtmlSize($attribute->value);
                     $style['unit'] = \PhpOffice\PhpWord\Style\Image::UNIT_PX;
 
                     break;
                 case 'height':
-                    $height = $attribute->value;
-
-                    // pt
-                    if (false !== strpos($height, 'pt')) {
-                        $height = Converter::pointToPixel((float) str_replace('pt', '', $height));
-                    }
-
-                    // px
-                    if (false !== strpos($height, 'px')) {
-                        $height = str_replace('px', '', $height);
-                    }
-
-                    $style['height'] = $height;
+                    $style['height'] = self::convertHtmlSize($attribute->value);
                     $style['unit'] = \PhpOffice\PhpWord\Style\Image::UNIT_PX;
 
                     break;
@@ -1210,5 +1238,23 @@ class Html
         }
 
         return trim($rgb, '# ');
+    }
+
+    /**
+     * Transform HTML sizes (pt, px) in pixels.
+     */
+    protected static function convertHtmlSize(string $size): float
+    {
+        // pt
+        if (false !== strpos($size, 'pt')) {
+            return Converter::pointToPixel((float) str_replace('pt', '', $size));
+        }
+
+        // px
+        if (false !== strpos($size, 'px')) {
+            return (float) str_replace('px', '', $size);
+        }
+
+        return (float) $size;
     }
 }
