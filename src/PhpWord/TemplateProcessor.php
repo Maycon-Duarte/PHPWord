@@ -1515,4 +1515,75 @@ class TemplateProcessor
 
         $this->zipClass->addFromString("word/media/" . $fileName, $replace);
     } 
+
+    /**
+     * Replace strings in all files in the docx
+     * 
+     * @param string $search
+     * @param string $replace
+     */
+    public function replaceInAllFiles($search, $replace): void
+    {
+        // Obter o caminho do arquivo template .docx
+        $docxFilePath = $this->tempDocumentFilename;
+
+        // Caminho temporário para descompactar o .docx
+        $tempDir = sys_get_temp_dir() . '/docx_temp_' . uniqid();
+
+        // Criar diretório temporário
+        if (!mkdir($tempDir, 0777, true)) {
+            throw new \Exception("Não foi possível criar o diretório temporário.");
+        }
+
+        // Descompactar o .docx
+        $zip = new \ZipArchive;
+        if ($zip->open($docxFilePath) === TRUE) {
+            $zip->extractTo($tempDir);
+            $zip->close();
+        } else {
+            throw new \Exception("Não foi possível abrir o arquivo .docx.");
+        }
+
+        // Substituir a string em todos os arquivos XML
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($tempDir),
+            \RecursiveIteratorIterator::LEAVES_ONLY
+        );
+
+        foreach ($files as $file) {
+            if ($file->isFile() && pathinfo($file, PATHINFO_EXTENSION) === 'xml') {
+                $content = file_get_contents($file->getPathname());
+                $updatedContent = str_replace($search, $replace, $content);
+                file_put_contents($file->getPathname(), $updatedContent);
+            }
+        }
+
+        // Compactar novamente os arquivos para criar o .docx atualizado
+        $updatedDocx = tempnam(sys_get_temp_dir(), 'updated_docx');
+        $zip = new \ZipArchive;
+        if ($zip->open($updatedDocx, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === TRUE) {
+            $files = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($tempDir),
+                \RecursiveIteratorIterator::LEAVES_ONLY
+            );
+
+            foreach ($files as $file) {
+                if ($file->isFile()) {
+                    $relativePath = substr($file->getPathname(), strlen($tempDir) + 1);
+                    $zip->addFile($file->getPathname(), $relativePath);
+                }
+            }
+
+            $zip->close();
+        } else {
+            throw new \Exception("Não foi possível criar o arquivo .docx atualizado.");
+        }
+
+        // Substituir o arquivo do TemplateProcessor pelo atualizado
+        $this->tempDocumentFilename = $updatedDocx;
+
+        // Remover diretório temporário
+        array_map('unlink', glob("$tempDir/*"));
+        rmdir($tempDir);
+    }
 }
